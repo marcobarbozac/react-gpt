@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { GptMessage, MyMessage, TextMessageBox, TypingLoader } from "../../components"
-import { ProsConsStreamUseCase } from "../../../core/use-cases";
+import { ProsConsStreamGenerationUseCase } from "../../../core/use-cases";
 
 interface Message {
   text: string;
@@ -11,6 +11,10 @@ interface Message {
 
 export const ProsConsStreamPage = () => {
 
+  const abortController = useRef( new AbortController());
+
+  const isRunning = useRef(false);
+
   const [isLoading, setIsLoading] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,41 +22,68 @@ export const ProsConsStreamPage = () => {
 
   const handlePost = async( text: string) => {
 
+    if(isRunning.current === true) {
+
+      abortController.current.abort();
+      abortController.current = new AbortController();
+      
+    }
+
     setIsLoading(true);
     setMessages( prev => [ ...prev, { text: text, isGpt: false } ]);
 
-    const reader = await ProsConsStreamUseCase( text );
+    const stream = ProsConsStreamGenerationUseCase(text, abortController.current.signal);
 
     setIsLoading(false);
-    
-    if ( !reader ) return alert('No se pudo generar en reader');
+isRunning.current = true;
+    setMessages( messages => [...messages, { text: '', isGpt: true } ]);
 
-    const decoder = new TextDecoder();
+    for await (const text of stream) {
 
-    let message = '';
-
-    setMessages( messages => [ ...messages, { text: message, isGpt: true } ]);
-
-    while( true ) {
-
-      const { value, done } = await reader.read();
-
-      if ( done ) break;
-
-      const decodedChunk = decoder.decode(value, { stream: true });
-
-      message += decodedChunk;
-
-      setMessages( messages => { 
-        const newMessages = [ ...messages ];
-
-        newMessages[ newMessages.length - 1 ].text = message;
-
-        return newMessages
-
-      });    
+     setMessages( messages => {
+      const newMessages =  [...messages];
+      newMessages[newMessages.length -1].text= text;
+      return newMessages;
+     }) 
     }
+
+    isRunning.current = false;
+
   }
+
+  //   const reader = await ProsConsStreamUseCase( text );
+
+  //   setIsLoading(false);
+    
+  //   if ( !reader ) return alert('No se pudo generar en reader');
+
+  //   const decoder = new TextDecoder();
+
+  //   let message = '';
+
+  //   setMessages( messages => [ ...messages, { text: message, isGpt: true } ]);
+
+  //   while( true ) {
+
+  //     const { value, done } = await reader.read();
+
+  //     if ( done ) break;
+
+  //     const decodedChunk = decoder.decode(value, { stream: true });
+
+  //     message += decodedChunk;
+
+  //     setMessages( messages => { 
+  //       const newMessages = [ ...messages ];
+
+  //       newMessages[ newMessages.length - 1 ].text = message;
+
+  //       return newMessages
+
+  //     });    
+  //   }
+  // }
+  
 
   return (
     <div className="chat-container" >
